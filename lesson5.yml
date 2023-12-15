@@ -1,0 +1,185 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Mappings:
+  Constants:
+    Vpc1:
+      Name: networking-ex05-1
+      CidrBlock: 10.0.0.0/16
+      PublicSubnetCidrBlock: 10.0.0.0/24
+    Vpc2:
+      Name: networking-ex05-2
+      CidrBlock: 10.1.0.0/16
+      PublicSubnetCidrBlock: 10.1.0.0/24
+    Route53:
+      HostedZoneName: mydomain.example
+      ServerFQDN: ex05.mydomain.example
+
+Resources:
+  # VPC 1
+  Vpc1:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap [Constants, Vpc1, CidrBlock]
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !FindInMap [Constants, Vpc1, Name]
+  Vpc1Igw:
+    Type: AWS::EC2::InternetGateway
+  Vpc1IgwAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref Vpc1Igw
+      VpcId: !Ref Vpc1
+  # VPC 1 Public Subnet
+  Vpc1PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc1
+      CidrBlock: !FindInMap [Constants, Vpc1, PublicSubnetCidrBlock]
+  Vpc1PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc1
+  Vpc1PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref Vpc1PublicRouteTable
+      GatewayId: !Ref Vpc1Igw
+      DestinationCidrBlock: 0.0.0.0/0
+    DependsOn:
+      - Vpc1IgwAttachment
+  Vpc1PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref Vpc1PublicRouteTable
+      SubnetId: !Ref Vpc1PublicSubnet
+  # EC2 1
+  Instance1Sg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref Vpc1
+      GroupDescription: networking
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: -1
+  Instance1:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0b828c1c5ac3f13ee
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        - SubnetId: !Ref Vpc1PublicSubnet
+          AssociatePublicIpAddress: 'true'
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref Instance1Sg
+      Tags:
+        - Key: Name
+          Value: !FindInMap [Constants, Vpc1, Name]
+
+  # VPC 2
+  Vpc2:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap [Constants, Vpc2, CidrBlock]
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !FindInMap [Constants, Vpc2, Name]
+  Vpc2Igw:
+    Type: AWS::EC2::InternetGateway
+  Vpc2IgwAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref Vpc2Igw
+      VpcId: !Ref Vpc2
+  # VPC 2 Public Subnet
+  Vpc2PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc2
+      CidrBlock: !FindInMap [Constants, Vpc2, PublicSubnetCidrBlock]
+  Vpc2PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc2
+  Vpc2PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref Vpc2PublicRouteTable
+      GatewayId: !Ref Vpc2Igw
+      DestinationCidrBlock: 0.0.0.0/0
+    DependsOn:
+      - Vpc2IgwAttachment
+  Vpc2PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref Vpc2PublicRouteTable
+      SubnetId: !Ref Vpc2PublicSubnet
+  # EC2 2
+  Instance2Sg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref Vpc2
+      GroupDescription: networking
+      SecurityGroupIngress:
+        # - CidrIp: 0.0.0.0/0
+        #   IpProtocol: tcp
+        #   FromPort: 80
+        #   ToPort: 80
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: -1
+  Instance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0b828c1c5ac3f13ee
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        - SubnetId: !Ref Vpc2PublicSubnet
+          AssociatePublicIpAddress: 'true'
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref Instance2Sg
+      Tags:
+        - Key: Name
+          Value: !FindInMap [Constants, Vpc2, Name]
+      UserData: !Base64 |
+        #!/bin/bash
+        sudo apt-get update
+        sudo apt-get install -y nginx
+        sudo bash -c 'echo ok > /var/www/html/health'
+
+  # Route53
+  PrivateHostedZone:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: !FindInMap [Constants, Route53, HostedZoneName]
+      VPCs:
+        - VPCId: !Ref Vpc1
+          VPCRegion: !Sub ${AWS::Region}
+  RecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      Name: !FindInMap [Constants, Route53, ServerFQDN]
+      Type: A
+      TTL: 300
+      HostedZoneId: !Ref PrivateHostedZone
+      ResourceRecords:
+        - !GetAtt Instance2.PublicIp
